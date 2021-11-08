@@ -1,4 +1,8 @@
-/*
+/*  Autor: Santiago Raimondi.
+    Fecha: 08/11/2021.
+
+    Notas: 
+
  */
 
 /**
@@ -12,9 +16,15 @@
 #include "clock_config.h"
 #include "MK64F12.h"
 #include "fsl_debug_console.h"
+
 /* TODO: insert other include files here. */
+#define NUM_TAPS (uint8_t) 30   /* Cantidad de coeficientes del filtro FIR que simula ser la planta */
+#define BLOCK_SIZE              /* Cantidad de muestras que se procesan por llamada del filtro */
 
 /* TODO: insert other definitions and declarations here. */
+
+/* Arreglo aleatorio con 30 coeficientes que simulan la planta */
+q15_t coeficients[NUM_TAPS] = {5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5};
 
 /*
  * @brief   Application entry point.
@@ -30,16 +40,10 @@ int main(void) {
     BOARD_InitDebugConsole();
 #endif
 
-    PRINTF("Hello World\n");
-
-    /* Force the counter to be placed into memory. */
-    volatile static int i = 0 ;
-    /* Enter an infinite loop, just incrementing a counter. */
+    PRINTF("Muestra del TP4 de DSP.\r\n");
+//    rand(); // Para crear valores pseudo-random
     while(1) {
-        i++ ;
-        /* 'Dummy' NOP to allow source level single stepping of
-            tight while() loop */
-        __asm volatile ("nop");
+
     }
     return 0 ;
 }

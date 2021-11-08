@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "mk64f12.h": "c",
+        "core_cm4.h": "c",
+        "system_mk64f12.h": "c"
+    }
+}
