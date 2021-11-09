@@ -27,104 +27,131 @@
 
  */
 
+#include "arm_math.h"
 #include <stdio.h>
 #include "board.h"
 #include "peripherals.h"
 #include "pin_mux.h"
 #include "clock_config.h"
-//#include "MK64F12.h"
 #include "fsl_debug_console.h"
-#include "arm_math.h"
-
-#define NUM_TAPS 	(uint16_t ) 30	/* Cantidad de coeficientes del filtro FIR que simula ser la planta y del filtro LMS */
-#define BLOCK_SIZE 	(uint32_t ) 100	/* Cantidad de muestras que se procesan por llamada del filtro LMS */
+/* ----------------------------------------------------------------------
+** Global defines for the simulation
+* ------------------------------------------------------------------- */
+#define NUMTAPS  (uint32_t)	 30
+#define BLOCKSIZE            100
+#define MU       (q15_t)	1
+#define NUMFRAMES 			10000	/* Cantidad de iteraciones para estimar la planta */
 #define POST_SHIFT	(uint8_t )  0 	/* Coef. de escaleo para que los coeficientes del filtro puedan superar los valores de [-1, 1) */
-//#define _DEBUGG						/* Variable de debugg */
-/* Variables globales */
+/* Threashold values to check the converging error */
+#define DELTA_ERROR         0.0009f
+#define DELTA_COEFF         0.001f
 
-// QUE MU Y LA POTENCIA DE LA ENTRADA SEAN PARAMETROS MODIFICABLES CON LOS SW DE LA PLACA
-q15_t mu = 100;	// INICIALIZAR A ALGUN VALOR RAZONABLE
-q15_t input_signal_power = 1; // IDEM ANTERIOR
+/* ----------------------------------------------------------------------
+* Declare FIR state buffers and structure
+* ------------------------------------------------------------------- */
+q15_t firStateQ15[NUMTAPS + BLOCKSIZE];
+arm_fir_instance_q15 LPF_instance;
 
-q63_t mse;	/* El valor devuelto por la funcion arm_power_q15 es de tipo q63_t */
+/* ----------------------------------------------------------------------
+* Declare LMSNorm state buffers and structure
+* ------------------------------------------------------------------- */
+q15_t lmsStateQ15[NUMTAPS + BLOCKSIZE];
+arm_lms_norm_instance_q15 lmsNorm_instance;
 
-int main(void) {
+/* ----------------------------------------------------------------------
+* Auxiliar Declarations for FIR Q15 module Test
+* ------------------------------------------------------------------- */
 
+q15_t lmsNormCoeff_q15[NUMTAPS] = {5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5};
+
+const q15_t FIRCoeff_q15[NUMTAPS] = {5,		10,		20,		40,		80,	  160,	320,	640,	1320,	2640,
+		5280, 10560,	21120, 21120, 21120, 21120, 21120, 21120, 10560, 	5280,
+		2640, 	1320, 	640,	320, 	160, 	80, 	40, 	20, 	10, 	5};
+
+/* ----------------------------------------------------------------------
+* Declare I/O buffers
+* ------------------------------------------------------------------- */
+q15_t wire1[BLOCKSIZE];	/*src*/
+q15_t wire2[BLOCKSIZE];	/*out*/
+q15_t wire3[BLOCKSIZE]; /*ref*/
+q15_t err_signal[BLOCKSIZE];	/*err*/
+
+/* ----------------------------------------------------------------------
+* Signal converge test
+* ------------------------------------------------------------------- */
+int32_t main(void)
+{
     /* Init board hardware. */
     BOARD_InitBootPins();
     BOARD_InitBootClocks();
     BOARD_InitBootPeripherals();
-#ifndef BOARD_INIT_DEBUG_CONSOLE_PERIPHERAL
-    /* Init FSL debug console. */
-    BOARD_InitDebugConsole();
-#endif
+    #ifndef BOARD_INIT_DEBUG_CONSOLE_PERIPHERAL
+        /* Init FSL debug console. */
+        BOARD_InitDebugConsole();
+    #endif
 
-    PRINTF("Muestra del TP4 de DSP.\r\n");
+    arm_status status;
+    uint32_t index;
+    q15_t minValue;
+    /* Initialize the LMSNorm data structure */
+    arm_lms_norm_init_q15(&lmsNorm_instance, NUMTAPS, lmsNormCoeff_q15, lmsStateQ15, MU, BLOCKSIZE, POST_SHIFT);
+    /* Initialize the FIR data structure */
+    arm_fir_init_q15(&LPF_instance, NUMTAPS, (q15_t *)FIRCoeff_q15, firStateQ15, BLOCKSIZE);
+    /* ----------------------------------------------------------------------
+    * Loop over the frames of data and execute each of the processing
+    * functions in the system.
+    * ------------------------------------------------------------------- */
+    for(uint32_t i=0; i < NUMFRAMES; i++)
+    {
+        /* Se crea la input data usando la funcion rand() */
+        for (int j = 0; j < BLOCKSIZE; j++)
+        {
+            wire1[j] = (q15_t)(rand()/(q15_t)(RAND_MAX));
+        }
 
-    /* Variables locales.
-     * Se definen las variables necesarias para las funciones de filtrado y
-     * se las inicializa.
-     */
-
-    arm_fir_instance_q15 plant;	/* Planta que el sistema adaptativo debería identificar */
-//    arm_lms_norm_instance_q15 lms_filter;
-    arm_lms_instance_q15 lms_filter;
-
-    /* Punto de inicio del filtro adaptativo */
-    q15_t lms_coeficients[NUM_TAPS] = {5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5};
-
-    /* Arreglo aleatorio con 30 coeficientes que simulan la planta */
-    const q15_t plant_coeficients[NUM_TAPS] = {5,		10,		20,		40,		80,	  160,	320,	640,	1320,	2640,
-    											5280, 10560,	21120, 21120, 21120, 21120, 21120, 21120, 10560, 	5280,
-												2640, 	1320, 	640,	320, 	160, 	80, 	40, 	20, 	10, 	5};
-
-    q15_t plant_state[NUM_TAPS + BLOCK_SIZE];	/* Es de este tamaño porque se ejecuta en un Cortex-M4 */
-    q15_t lms_state[NUM_TAPS + BLOCK_SIZE - 1];
-
-    q15_t src[BLOCK_SIZE];	/* Entrada a la planta y al sistema adaptativo (por ser un problema de deteccion de planta) */
-    q15_t out[BLOCK_SIZE];	/* Salida del sistema adaptativo */
-    q15_t ref[BLOCK_SIZE];	/* Salida de la planta (señal de referencia para el sistema adaptativo) */
-    q15_t err[BLOCK_SIZE];	/* Diferencia entre ref - out. Es la señal que se realimenta al sistema adaptativo */
-
-//    arm_lms_norm_init_q15(&lms_filter, NUM_TAPS, lms_coeficients, lms_state, mu, BLOCK_SIZE, POST_SHIFT);
-    arm_lms_init_q15(&lms_filter, NUM_TAPS, lms_coeficients, lms_state, mu, BLOCK_SIZE, POST_SHIFT);
-
-    arm_fir_init_q15(&plant, NUM_TAPS, plant_coeficients, plant_state, BLOCK_SIZE);
-
-	#ifdef _DEBUGG
-    	uint16_t contador =0;
-	#endif
-
-    while(1) {
-
-    	/* Se llena el buffer de muestras aleatorias */
-    	for(int i = 0; i < BLOCK_SIZE; i++)
-    	{
-//    		src[i] = (q15_t) (rand()>>16);
-    		src[i] = (q15_t) rand();
-    	}
-
-    	arm_fir_q15(&plant, src, ref, BLOCK_SIZE);	/* Se computa la planta */
-
-    	// arm_lms_norm_q15(&lms_filter, src, ref, out, err, BLOCK_SIZE);	/* Se computa el filtro adaptativo */
-    	arm_lms_q15(&lms_filter, src, ref, out, err, BLOCK_SIZE);	/* Se computa el filtro adaptativo */
-
-		/* Se computa el error medio cuadratico (MSE) */
-		arm_power_q15(err, BLOCK_SIZE, &mse);
-		mse = mse / BLOCK_SIZE;
-
-		#ifdef _DEBUGG
-			contador ++;
-			if(contador>1000)
-			{
-				contador = 0;
-			    for(int i=0; i<NUM_TAPS; i++)
-			    	PRINTF("%d/r/n", lms_coeficients[i]);
-			}
-		#endif
+        /* Execute the FIR processing function.  Input wire1 and output wire2 */
+        arm_fir_q15(&LPF_instance, wire1, wire2, BLOCKSIZE);
+        /* Execute the LMS Norm processing function*/
+        arm_lms_norm_q15(&lmsNorm_instance, /* LMSNorm instance */
+            wire1,                         /* Input signal */
+            wire2,                         /* Reference Signal */
+            wire3,                         /* Converged Signal */
+            err_signal,                    /* Error Signal, this will become small as the signal converges */
+            BLOCKSIZE);                    /* BlockSize */
+        /* apply overall gain */
+//        arm_scale_f32(wire3, 5, wire3, BLOCKSIZE);   /* in-place buffer */
+    }
+    status = ARM_MATH_SUCCESS;
+    /* -------------------------------------------------------------------------------
+    * Test whether the error signal has reached towards 0.
+    * ----------------------------------------------------------------------------- */
+    arm_abs_q15(err_signal, err_signal, BLOCKSIZE);
+    arm_min_q15(err_signal, BLOCKSIZE, &minValue, &index);
+    if (minValue > DELTA_ERROR)
+    {
+        status = ARM_MATH_TEST_FAILURE;
     }
 
+    PRINTF("MinValue of err_signal: %f\r\n", minValue);
 
+    /* ----------------------------------------------------------------------
+    * Test whether the filter coefficients have converged.
+    * ------------------------------------------------------------------- */
+    arm_sub_q15(FIRCoeff_q15, lmsNormCoeff_q15, lmsNormCoeff_q15, NUMTAPS);
+    arm_abs_q15(lmsNormCoeff_q15, lmsNormCoeff_q15, NUMTAPS);
+    arm_min_q15(lmsNormCoeff_q15, NUMTAPS, &minValue, &index);
+    status = (minValue > DELTA_COEFF) ? ARM_MATH_TEST_FAILURE : ARM_MATH_SUCCESS;
 
-    return 0 ;
+    PRINTF("MinValue of coef_err: %f\r\n", minValue);
+
+    if (status != ARM_MATH_SUCCESS)
+        PRINTF("FAILURE\r\n");
+    else
+        PRINTF("SUCCESS\r\n");
+
+    PRINTF("\r\n");
+
+    while (1) {}
+
 }
+
