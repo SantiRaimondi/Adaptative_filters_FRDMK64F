@@ -113,7 +113,7 @@ int32_t main(void)
         /* Se crea la input data usando la funcion rand() */
         for (int j = 0; j < BLOCKSIZE; j++)
         {
-            wire1[j] = (q15_t)(rand()/(q15_t)(RAND_MAX));
+            wire1[j] = (q15_t)(rand()/(RAND_MAX));
         }
 
         /* Execute the FIR processing function.  Input wire1 and output wire2 */
