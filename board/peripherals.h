@@ -12,6 +12,8 @@
 #include "fsl_common.h"
 #include "fsl_uart.h"
 #include "fsl_clock.h"
+#include "fsl_gpio.h"
+#include "fsl_port.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -25,6 +27,14 @@ extern "C" {
 #define UART0_PERIPHERAL UART0
 /* Definition of the clock source frequency */
 #define UART0_CLOCK_SOURCE CLOCK_GetFreq(UART0_CLK_SRC)
+/* Alias for GPIOA peripheral */
+#define GPIOA_GPIO GPIOA
+/* Alias for PORTA */
+#define GPIOA_PORT PORTA
+/* GPIOA interrupt vector ID (number). */
+#define GPIOA_IRQN PORTA_IRQn
+/* GPIOA interrupt handler identifier. */
+#define GPIOA_IRQHANDLER PORTA_IRQHandler
 
 /***********************************************************************************************************************
  * Global variables

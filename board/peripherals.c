@@ -60,7 +60,8 @@ instance:
 - peripheral: 'NVIC'
 - config_sets:
   - nvic:
-    - interrupt_table: []
+    - interrupt_table:
+      - 0: []
     - interrupts: []
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
 /* clang-format on */
@@ -114,12 +115,44 @@ static void UART0_init(void) {
 }
 
 /***********************************************************************************************************************
+ * GPIOA initialization code
+ **********************************************************************************************************************/
+/* clang-format off */
+/* TEXT BELOW IS USED AS SETTING FOR TOOLS *************************************
+instance:
+- name: 'GPIOA'
+- type: 'gpio'
+- mode: 'GPIO'
+- custom_name_enabled: 'false'
+- type_id: 'gpio_5920c5e026e8e974e6dc54fbd5e22ad7'
+- functional_group: 'BOARD_InitPeripherals'
+- peripheral: 'GPIOA'
+- config_sets:
+  - fsl_gpio:
+    - enable_irq: 'true'
+    - port_interrupt:
+      - IRQn: 'PORTA_IRQn'
+      - enable_interrrupt: 'enabled'
+      - enable_priority: 'false'
+      - priority: '0'
+      - enable_custom_name: 'false'
+ * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
+/* clang-format on */
+
+static void GPIOA_init(void) {
+  /* Make sure, the clock gate for port A is enabled (e. g. in pin_mux.c) */
+  /* Enable interrupt PORTA_IRQn request in the NVIC. */
+  EnableIRQ(GPIOA_IRQN);
+}
+
+/***********************************************************************************************************************
  * Initialization functions
  **********************************************************************************************************************/
 void BOARD_InitPeripherals(void)
 {
   /* Initialize components */
   UART0_init();
+  GPIOA_init();
 }
 
 /***********************************************************************************************************************

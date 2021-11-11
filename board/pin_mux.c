@@ -142,6 +142,7 @@ BOARD_InitPins:
 - options: {callFromInitBoot: 'true', prefix: BOARD_, coreID: core0, enableClock: 'true'}
 - pin_list:
   - {pin_num: '36', peripheral: TPIU, signal: SWO, pin_signal: PTA2/UART0_TX/FTM0_CH7/JTAG_TDO/TRACE_SWO/EZP_DO, drive_strength: low, pull_select: down, pull_enable: disable}
+  - {pin_num: '38', peripheral: GPIOA, signal: 'GPIO, 4', pin_signal: PTA4/LLWU_P3/FTM0_CH1/NMI_b/EZP_CS_b, identifier: '', direction: INPUT, gpio_interrupt: kPORT_InterruptFallingEdge}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -156,6 +157,13 @@ void BOARD_InitPins(void)
 {
     /* Port A Clock Gate Control: Clock enabled */
     CLOCK_EnableClock(kCLOCK_PortA);
+
+    gpio_pin_config_t gpioa_pin38_config = {
+        .pinDirection = kGPIO_DigitalInput,
+        .outputLogic = 0U
+    };
+    /* Initialize GPIO functionality on pin PTA4 (pin 38)  */
+    GPIO_PinInit(GPIOA, 4U, &gpioa_pin38_config);
 
     /* PORTA2 (pin 36) is configured as TRACE_SWO */
     PORT_SetPinMux(PORTA, 2U, kPORT_MuxAlt7);
@@ -174,6 +182,12 @@ void BOARD_InitPins(void)
                      /* Drive Strength Enable: Low drive strength is configured on the corresponding pin, if pin
                       * is configured as a digital output. */
                      | PORT_PCR_DSE(kPORT_LowDriveStrength));
+
+    /* PORTA4 (pin 38) is configured as PTA4 */
+    PORT_SetPinMux(PORTA, 4U, kPORT_MuxAsGpio);
+
+    /* Interrupt configuration on PORTA4 (pin 38): Interrupt on falling edge */
+    PORT_SetPinInterruptConfig(PORTA, 4U, kPORT_InterruptFallingEdge);
 }
 
 /* clang-format off */
