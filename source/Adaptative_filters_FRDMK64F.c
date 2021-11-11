@@ -80,9 +80,12 @@ int main()
 	q15_t out[BLOCKSIZE];
 	q15_t err[BLOCKSIZE];
 
+    /* Variables para guardar la evolucion del error */
+    q31_t mse[NUMFRAMES];
+
 	while(1)
 	{
-		for(uint16_t j = 0; j < NUMFRAMES; j++)
+		for(uint16_t i = 0; i < NUMFRAMES; i++)
 		{
 			/* Se construye la señal aleatoria. Se shiftea el valor devuelto
 			 * para que sea una señal pequeña y no sature el calculo del filtro.
@@ -91,14 +94,30 @@ int main()
 			 * algoritmo. Si mu es muy grande o la señal de entrada es muy
 			 * grande, el algoritmo puede diverger.
 			 */
-			for(uint16_t i = 0; i < BLOCKSIZE; i++)
+			for(uint16_t j = 0; j < BLOCKSIZE; j++)
 			{
-				src[i] = (q15_t)(rand()>>20);
+				src[j] = (q15_t)(rand()>>20);
 			}
 
 			arm_fir_q15(&fir_struct, src, ref, BLOCKSIZE);
 
 			arm_lms_q15(&lms_struct, src, ref, out, err, BLOCKSIZE);
+
+			/* Se computa el MSE para cada iteracion. NO FUNCIONA, DA SIEMPRE 0*/
+	        for(uint16_t k = 0; k < BLOCKSIZE; k++)
+	        {
+	        	mse[i] += err[k] * err [k];
+	        }
+
+	        mse[i] = mse[i] / BLOCKSIZE;
+
+	        /* Se satura el error para poder enviar los bits menos significativos.
+	         * No interesa que el error sea grande al principio, pero si es importante
+	         * saber que tan pequeño es al final.
+	         * Se satura al valor de 2^17.
+	         */
+	        if(mse[i] > 262143)
+	        	mse[i] = 262143;
 		}
 
 		/* Se crea la trama de salida
@@ -135,16 +154,16 @@ int main()
 				*/
 				if(j == 0)
 				{
-					*tx_buffer_ptr = (uint8_t) lmsCoeff_q15[i] & 0x0FF;
+					*tx_buffer_ptr = (uint8_t) lms_coeficients[i] & 0x0FF;
 					tx_buffer_ptr++;
-					*tx_buffer_ptr = (uint8_t) (lmsCoeff_q15[i] >> 8) & 0x0FF ;
+					*tx_buffer_ptr = (uint8_t) (lms_coeficients[i] >> 8) & 0x0FF ;
 					tx_buffer_ptr++;
 				}
 				else
 				{
-					*tx_buffer_ptr  = (uint8_t) FIRCoeff_q15[i] & 0x0FF;
+					*tx_buffer_ptr  = (uint8_t) fir_coeficients[i] & 0x0FF;
 					tx_buffer_ptr++;
-					*tx_buffer_ptr = (uint8_t) (FIRCoeff_q15[i] >> 8) & 0x0FF;
+					*tx_buffer_ptr = (uint8_t) (fir_coeficients[i] >> 8) & 0x0FF;
 					tx_buffer_ptr++;
 				}
 			}
@@ -153,6 +172,23 @@ int main()
 		/* Se hace la transmision de los datos */
 		UART_WriteBlocking(UART0, tx_buffer, NUMTAPS*4);
 
+		/* Se transmite la informacion del error */
+
+		uint8_t err_tx_buffer[NUMFRAMES*2];
+		uint8_t* err_tx_buffer_ptr = err_tx_buffer;
+
+		for(uint16_t i = 0; i < NUMFRAMES; i++)
+		{
+			/* Se descartan los dos bits LSB. No importan los bits mayores a 17 ya que
+			 * esta saturado. El rango de importancia es entre 2 a 17 bits.
+			 */
+			*err_tx_buffer_ptr = (uint8_t) (mse[i] >> 2) & 0x0FF;
+			err_tx_buffer_ptr++;
+			*err_tx_buffer_ptr = (uint8_t) (mse[i] >> 10) & 0x0FF ;
+			err_tx_buffer_ptr++;
+		}
+
+		UART_WriteBlocking(UART0, err_tx_buffer, NUMFRAMES*2);
 
 		while(1){}
 	}
