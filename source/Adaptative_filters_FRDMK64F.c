@@ -1,5 +1,5 @@
 /*  Autor: Santiago Raimondi.
-    Fecha: 09/11/2021.
+    Fecha: 11/11/2021.
 
 	Consigna:
 
@@ -23,9 +23,21 @@
 	Analizar el resultado con diferentes valores de μ y de la potencia de la señal random de entrada.
 
 
-    Notas: 
+    @brief:
+    El programa primero inicializa las funciones de los filtros.
 
-    	Con datos de tipo f32 funciona bien, con q15 no funciona.
+	Luego, crea un arreglo de 100 muestras aleatorias utilizando la función de C rand() la cual se acota
+	a valores entre [-1, 1] al dividir su resultado por la constante RAND_MAX que es el máximo valor devuelto
+	por la función rand(). Al finalizar esta operación se lo castea a punto fijo al resultado.
+
+	Finalmente, se computa la planta (filtro FIR) con las entradas aleatorias y luego con la salida de la
+	planta, las entradas aleatorias y el error (diferencia entre la referencia y la salida anterior) se computa
+	la salida actual del filtro adaptativo. Este proceso se repite NUMFRAMES cantidad de veces, en este caso se
+	llegó a la conclusión de que con 1000 veces se llega a una aproximación bastante cercana al valor real de la
+	planta.
+
+	Al terminar todas las iteraciones, se envían los valores de los coeficientes utilizando el puerto serie para
+	que sean procesados y analizados en forma gráfica por un script desarrollado en Python.
 
  */
 
@@ -42,8 +54,8 @@
 * ------------------------------------------------------------------- */
 #define NUMTAPS  (uint32_t)	 30
 #define BLOCKSIZE            100
-#define MU       (q15_t)	1
-#define NUMFRAMES 			1000	/* Cantidad de iteraciones para estimar la planta */
+#define MU       (q15_t)	150
+#define NUMFRAMES 			100	/* Cantidad de iteraciones para estimar la planta */
 #define POST_SHIFT	(uint8_t )  0 	/* Coef. de escaleo para que los coeficientes del filtro puedan superar los valores de [-1, 1) */
 
 //#define __DEBUGG 	/* Variable de debugeo */
@@ -69,6 +81,7 @@ arm_lms_norm_instance_q15 lmsNorm_instance;
 * Auxiliar Declarations for FIR Q15 module Test
 * ------------------------------------------------------------------- */
 
+//q15_t lmsNormCoeff_q15[NUMTAPS] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 q15_t lmsNormCoeff_q15[NUMTAPS] = {5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5};
 
 const q15_t FIRCoeff_q15[NUMTAPS] = {5,		10,		20,		40,		80,	  160,	320,	640,	1320,	2640,
@@ -104,6 +117,12 @@ int32_t main(void)
     arm_lms_norm_init_q15(&lmsNorm_instance, NUMTAPS, lmsNormCoeff_q15, lmsStateQ15, MU, BLOCKSIZE, POST_SHIFT);
     /* Initialize the FIR data structure */
     arm_fir_init_q15(&LPF_instance, NUMTAPS, (q15_t *)FIRCoeff_q15, firStateQ15, BLOCKSIZE);
+
+    /* Variables para guardar la evolucion del error */
+//    q63_t mse[NUMFRAMES]
+//    q15_t error[NUMFRAMES];
+//    q15_t aux_err[NUMTAPS];
+
     /* ----------------------------------------------------------------------
     * Loop over the frames of data and execute each of the processing
     * functions in the system.
@@ -127,6 +146,17 @@ int32_t main(void)
             BLOCKSIZE);                    /* BlockSize */
         /* apply overall gain */
 //        arm_scale_f32(wire3, 5, wire3, BLOCKSIZE);   /* in-place buffer */
+
+        /* Se computa el MSE para cada iteracion. NO FUNCIONA, DA SIEMPRE 0*/
+//        arm_power_q15(err_signal, BLOCKSIZE, &mse[i]);
+//        mse[i] = mse[i] / BLOCKSIZE;
+
+        /* Para computar el error lo hago a traves de la distancia entre
+         * los coeficientes del LMS y del FIR.
+         */
+//        arm_sub_q15(FIRCoeff_q15, lmsNormCoeff_q15, aux_err, NUMTAPS);
+//        arm_abs_q15(aux_err, aux_err, NUMTAPS);
+//        arm_min_q15(aux_err, NUMTAPS, &error[i], &index);
     }
     /* -------------------------------------------------------------------------------
     * Test whether the error signal has reached towards 0.
@@ -149,6 +179,9 @@ int32_t main(void)
     /* ----------------------------------------------------------------------
     * Test whether the filter coefficients have converged.
     * ------------------------------------------------------------------- */
+    /* Se hace la diferencia entre coeficientes (FIR - LMS), se saca el valor absoluto
+     * y se busca la menor distancia.
+     */
     arm_sub_q15(FIRCoeff_q15, lmsNormCoeff_q15, lmsNormCoeff_q15, NUMTAPS);
     arm_abs_q15(lmsNormCoeff_q15, lmsNormCoeff_q15, NUMTAPS);
     arm_min_q15(lmsNormCoeff_q15, NUMTAPS, &minValue, &index);
@@ -166,8 +199,6 @@ int32_t main(void)
         PRINTF("\r\n");
 	#endif
 
-
-
     /* Se crea la trama de salida
      * El tx_buffer es de tamaño x4 porque el tamaño de dato que se puede
      * transmitir es de 8bits y cada dato q15_t ocupa 2 bytes y se meten los
@@ -175,20 +206,16 @@ int32_t main(void)
      *
      * La trama es:
      * 	Byte N°     |       Data
-			0       |   MSE LowerByte
-			1       |       "
-			2       |       "
-			3       |   MSE HigherByte
-			4       |   lmsNormCoeff_q15[0] LowByte
-			5       |   lmsNormCoeff_q15[0] HighByte
+			0       |   lmsNormCoeff_q15[0] LowByte
+			1       |   lmsNormCoeff_q15[0] HighByte
 		   ...      |       "
-			66      |   lmsNormCoeff_q15[29] LowByte
-			67      |   lmsNormCoeff_q15[29] HighByte
-			68      |   FIRCoeff_q15[0] LowByte
-			69      |   FIRCoeff_q15[0] HighByte
+			60      |   lmsNormCoeff_q15[29] LowByte
+			61      |   lmsNormCoeff_q15[29] HighByte
+			62      |   FIRCoeff_q15[0] LowByte
+			63      |   FIRCoeff_q15 [0] HighByte
 		   ...      |       "
-		   126      |   FIRCoeff_q15[29] LowByte
-		   127      |   FIRCoeff_q15[29] HighByte
+		   118      |   FIRCoeff_q15[29] LowByte
+		   119      |   FIRCoeff_q15[29] HighByte
      */
     uint8_t tx_buffer[NUMTAPS*4];
     uint8_t* tx_buffer_ptr = tx_buffer;
@@ -208,7 +235,7 @@ int32_t main(void)
 			{
 			    *tx_buffer_ptr = (uint8_t) lmsNormCoeff_q15[i] & 0x0FF;
 			    tx_buffer_ptr++;
-			    *tx_buffer_ptr = (uint8_t) (lmsNormCoeff_q15[i] >> 8) ;
+			    *tx_buffer_ptr = (uint8_t) (lmsNormCoeff_q15[i] >> 8) & 0x0FF ;
 			    tx_buffer_ptr++;
 			}
 			else
@@ -225,6 +252,28 @@ int32_t main(void)
 	#ifndef	__DEBUGG
     	UART_WriteBlocking(UART0, tx_buffer, NUMTAPS*4);
     #endif
+
+    /* Se transmite la informacion del error */
+
+//    uint8_t err_tx_buffer[NUMFRAMES*2];
+//    uint8_t* err_tx_buffer_ptr = err_tx_buffer;
+//
+//	for(uint16_t i = 0; i < NUMFRAMES; i++)
+//	{
+//		/* Solo se mandan los 16b MSB para mandar menos bytes */
+////		*err_tx_buffer_ptr = (uint8_t) (mse[i] >> 48) & 0x0FF;
+////		err_tx_buffer_ptr++;
+////		*err_tx_buffer_ptr = (uint8_t) (mse[i] >> 56) & 0x0FF ;
+////		err_tx_buffer_ptr++;
+//		*err_tx_buffer_ptr = (uint8_t) (error[i] & 0x0FF);
+//		err_tx_buffer_ptr++;
+//		*err_tx_buffer_ptr = (uint8_t) (error[i] >> 8) & 0x0FF ;
+//		err_tx_buffer_ptr++;
+//    }
+//
+//	#ifndef	__DEBUGG
+//		UART_WriteBlocking(UART0, err_tx_buffer, NUMFRAMES*2);
+//	#endif
 
     while (1) {}
 
