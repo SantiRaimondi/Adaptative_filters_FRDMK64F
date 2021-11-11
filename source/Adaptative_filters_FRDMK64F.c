@@ -46,6 +46,8 @@
 #define NUMFRAMES 			1000	/* Cantidad de iteraciones para estimar la planta */
 #define POST_SHIFT	(uint8_t )  0 	/* Coef. de escaleo para que los coeficientes del filtro puedan superar los valores de [-1, 1) */
 
+//#define __DEBUGG 	/* Variable de debugeo */
+
 /* Threashold values to check the converging error */
 /* Modificar a valores q15 */
 #define DELTA_ERROR         0.0009f
@@ -96,7 +98,6 @@ int32_t main(void)
         BOARD_InitDebugConsole();
     #endif
 
-    arm_status status;
     uint32_t index;
     q15_t minValue;
     /* Initialize the LMSNorm data structure */
@@ -127,18 +128,23 @@ int32_t main(void)
         /* apply overall gain */
 //        arm_scale_f32(wire3, 5, wire3, BLOCKSIZE);   /* in-place buffer */
     }
-    status = ARM_MATH_SUCCESS;
     /* -------------------------------------------------------------------------------
     * Test whether the error signal has reached towards 0.
     * ----------------------------------------------------------------------------- */
     arm_abs_q15(err_signal, err_signal, BLOCKSIZE);
     arm_min_q15(err_signal, BLOCKSIZE, &minValue, &index);
-    if (minValue > DELTA_ERROR)
-    {
-        status = ARM_MATH_TEST_FAILURE;
-    }
 
-//    PRINTF("MinValue of err_signal: %f\r\n", minValue);
+	#ifdef __DEBUGG
+    	arm_status status;
+        status = ARM_MATH_SUCCESS;
+
+        if (minValue > DELTA_ERROR)
+        {
+            status = ARM_MATH_TEST_FAILURE;
+        }
+
+        PRINTF("MinValue of err_signal: %f\r\n", minValue);
+    #endif
 
     /* ----------------------------------------------------------------------
     * Test whether the filter coefficients have converged.
@@ -146,17 +152,21 @@ int32_t main(void)
     arm_sub_q15(FIRCoeff_q15, lmsNormCoeff_q15, lmsNormCoeff_q15, NUMTAPS);
     arm_abs_q15(lmsNormCoeff_q15, lmsNormCoeff_q15, NUMTAPS);
     arm_min_q15(lmsNormCoeff_q15, NUMTAPS, &minValue, &index);
-    status = (minValue > DELTA_COEFF) ? ARM_MATH_TEST_FAILURE : ARM_MATH_SUCCESS;
 
-//    PRINTF("MinValue of coef_err: %f\r\n", minValue);
-/*
-    if (status != ARM_MATH_SUCCESS)
-        PRINTF("FAILURE\r\n");
-    else
-        PRINTF("SUCCESS\r\n");
-    */
+    #ifdef __DEBUGG
+    	status = (minValue > DELTA_COEFF) ? ARM_MATH_TEST_FAILURE : ARM_MATH_SUCCESS;
 
-//    PRINTF("\r\n");
+    	PRINTF("MinValue of coef_err: %f\r\n", minValue);
+
+        if (status != ARM_MATH_SUCCESS)
+            PRINTF("FAILURE\r\n");
+        else
+            PRINTF("SUCCESS\r\n");
+
+        PRINTF("\r\n");
+	#endif
+
+
 
     /* Se crea la trama de salida
      * El tx_buffer es de tamaño x4 porque el tamaño de dato que se puede
@@ -212,7 +222,9 @@ int32_t main(void)
     }
 
     /* Se hace la transmision de los datos */
-    UART_WriteBlocking(UART0, tx_buffer, NUMTAPS*4);
+	#ifndef	__DEBUGG
+    	UART_WriteBlocking(UART0, tx_buffer, NUMTAPS*4);
+    #endif
 
     while (1) {}
 
