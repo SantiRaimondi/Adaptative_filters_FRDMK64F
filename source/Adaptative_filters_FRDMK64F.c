@@ -1,5 +1,5 @@
 /*  Autor: Santiago Raimondi.
-    Fecha: 08/11/2021.
+    Fecha: 09/11/2021.
 
 	Consigna:
 
@@ -25,6 +25,8 @@
 
     Notas: 
 
+    	Con datos de tipo f32 funciona bien, con q15 no funciona.
+
  */
 
 #include "arm_math.h"
@@ -34,15 +36,18 @@
 #include "pin_mux.h"
 #include "clock_config.h"
 #include "fsl_debug_console.h"
+
 /* ----------------------------------------------------------------------
 ** Global defines for the simulation
 * ------------------------------------------------------------------- */
 #define NUMTAPS  (uint32_t)	 30
 #define BLOCKSIZE            100
 #define MU       (q15_t)	1
-#define NUMFRAMES 			10000	/* Cantidad de iteraciones para estimar la planta */
+#define NUMFRAMES 			1000	/* Cantidad de iteraciones para estimar la planta */
 #define POST_SHIFT	(uint8_t )  0 	/* Coef. de escaleo para que los coeficientes del filtro puedan superar los valores de [-1, 1) */
+
 /* Threashold values to check the converging error */
+/* Modificar a valores q15 */
 #define DELTA_ERROR         0.0009f
 #define DELTA_COEFF         0.001f
 
@@ -75,6 +80,7 @@ q15_t wire1[BLOCKSIZE];	/*src*/
 q15_t wire2[BLOCKSIZE];	/*out*/
 q15_t wire3[BLOCKSIZE]; /*ref*/
 q15_t err_signal[BLOCKSIZE];	/*err*/
+
 
 /* ----------------------------------------------------------------------
 * Signal converge test
@@ -132,7 +138,7 @@ int32_t main(void)
         status = ARM_MATH_TEST_FAILURE;
     }
 
-    PRINTF("MinValue of err_signal: %f\r\n", minValue);
+//    PRINTF("MinValue of err_signal: %f\r\n", minValue);
 
     /* ----------------------------------------------------------------------
     * Test whether the filter coefficients have converged.
@@ -142,14 +148,71 @@ int32_t main(void)
     arm_min_q15(lmsNormCoeff_q15, NUMTAPS, &minValue, &index);
     status = (minValue > DELTA_COEFF) ? ARM_MATH_TEST_FAILURE : ARM_MATH_SUCCESS;
 
-    PRINTF("MinValue of coef_err: %f\r\n", minValue);
-
+//    PRINTF("MinValue of coef_err: %f\r\n", minValue);
+/*
     if (status != ARM_MATH_SUCCESS)
         PRINTF("FAILURE\r\n");
     else
         PRINTF("SUCCESS\r\n");
+    */
 
-    PRINTF("\r\n");
+//    PRINTF("\r\n");
+
+    /* Se crea la trama de salida
+     * El tx_buffer es de tamaño x4 porque el tamaño de dato que se puede
+     * transmitir es de 8bits y cada dato q15_t ocupa 2 bytes y se meten los
+     * coeficientes de ambos filtros en un solo arreglo
+     *
+     * La trama es:
+     * 	Byte N°     |       Data
+			0       |   MSE LowerByte
+			1       |       "
+			2       |       "
+			3       |   MSE HigherByte
+			4       |   lmsNormCoeff_q15[0] LowByte
+			5       |   lmsNormCoeff_q15[0] HighByte
+		   ...      |       "
+			66      |   lmsNormCoeff_q15[29] LowByte
+			67      |   lmsNormCoeff_q15[29] HighByte
+			68      |   FIRCoeff_q15[0] LowByte
+			69      |   FIRCoeff_q15[0] HighByte
+		   ...      |       "
+		   126      |   FIRCoeff_q15[29] LowByte
+		   127      |   FIRCoeff_q15[29] HighByte
+     */
+    uint8_t tx_buffer[NUMTAPS*4];
+    uint8_t* tx_buffer_ptr = tx_buffer;
+
+    for(uint8_t j = 0; j < 2; j++)
+    {
+
+    	for(uint8_t i = 0; i < NUMTAPS; i++)
+    	{
+			/* Se guardan 8 bits menos significativos, se incrementa el puntero
+			* y luego se guardan los 8 bits mas significativos.
+			* Primero se llena con los valores de los coeficientes del filtro LMS y
+			* luego con los del filtro FIR (planta). Se hace asi para respetar la
+			* trama propuesta mas arriba.
+			*/
+			if(j == 0)
+			{
+			    *tx_buffer_ptr = (uint8_t) lmsNormCoeff_q15[i] & 0x0FF;
+			    tx_buffer_ptr++;
+			    *tx_buffer_ptr = (uint8_t) (lmsNormCoeff_q15[i] >> 8) ;
+			    tx_buffer_ptr++;
+			}
+			else
+			{
+				*tx_buffer_ptr  = (uint8_t) FIRCoeff_q15[i] & 0x0FF;
+				tx_buffer_ptr++;
+				*tx_buffer_ptr = (uint8_t) (FIRCoeff_q15[i] >> 8) & 0x0FF;
+				tx_buffer_ptr++;
+			}
+        }
+    }
+
+    /* Se hace la transmision de los datos */
+    UART_WriteBlocking(UART0, tx_buffer, NUMTAPS*4);
 
     while (1) {}
 
