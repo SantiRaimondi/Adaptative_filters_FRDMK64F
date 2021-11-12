@@ -78,7 +78,7 @@ A continuación se muestran algunos gráficos con la evolución de los coeficien
 An adaptive filter is used to identify a plant whose transfer function is unknown, represented
 with a FIR filter.
 
-For this, the CMSIS functions for [FIR](https://arm-software.github.io/CMSIS_5/DSP/html/group__FIR.html) and for [LMS](https: // arm-software .github.io / CMSIS_5 / DSP / html / group__LMS.html) filters.
+For this, the CMSIS functions for [FIR](https://arm-software.github.io/CMSIS_5/DSP/html/group__FIR.html) and for [LMS](https://arm-software.github.io/CMSIS_5/DSP/html/group__LMS.html) filters.
 
 ### General program description
 
