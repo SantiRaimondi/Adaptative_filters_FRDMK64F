@@ -25,6 +25,32 @@ extern "C" {
  */
 void BOARD_InitBootPins(void);
 
+/*! @name PORTA4 (number 38), SW3
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_switch_3_GPIO GPIOA               /*!<@brief GPIO peripheral base pointer */
+#define BOARD_switch_3_GPIO_PIN_MASK (1U << 4U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_switch_3_PORT PORTA               /*!<@brief PORT peripheral base pointer */
+#define BOARD_switch_3_PIN 4U                   /*!<@brief PORT pin number */
+#define BOARD_switch_3_PIN_MASK (1U << 4U)      /*!<@brief PORT pin mask */
+                                                /* @} */
+
+/*! @name PORTC6 (number 78), U8[11]/SW2
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_switch_2_GPIO GPIOC               /*!<@brief GPIO peripheral base pointer */
+#define BOARD_switch_2_GPIO_PIN_MASK (1U << 6U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_switch_2_PORT PORTC               /*!<@brief PORT peripheral base pointer */
+#define BOARD_switch_2_PIN 6U                   /*!<@brief PORT pin number */
+#define BOARD_switch_2_PIN_MASK (1U << 6U)      /*!<@brief PORT pin mask */
+                                                /* @} */
+
 /*!
  * @brief Configures pin routing and optionally pin electrical features.
  *

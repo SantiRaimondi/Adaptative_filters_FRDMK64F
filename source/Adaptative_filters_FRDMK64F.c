@@ -41,9 +41,77 @@
 
 #define NUMTAPS (uint16_t) 30
 #define BLOCKSIZE (uint32_t) 100
-#define MU (q15_t)	10000
 #define POSTSHIFT (uint32_t) 0
 #define NUMFRAMES (uint16_t) 5000
+
+volatile q15_t mu = 1;
+volatile q15_t signal_power = 1;	/* Amplitud de la señal de entrada */
+volatile bool restart = false;
+
+/* SW2 Interr.: Se actualiza el valor de la potencia de señal */
+void GPIOC_IRQHANDLER(void) {
+  /* Get pin flags */
+  uint32_t pin_flags = GPIO_PortGetInterruptFlags(GPIOC);
+
+  /* Place your interrupt code here */
+  restart = true;
+  if(signal_power >= 10000)
+  {
+	  signal_power = signal_power + 3000;	/* Para signal_power alto, se usa un incremento chico */
+  }
+  else
+  {
+	  signal_power = signal_power * 10;	/* Para signal_power bajo, se usa un incremento alto */
+  }
+
+  if(signal_power >= 28000)
+  {
+	  signal_power = 28000;	/* Se satura el signal_power a 28000 */
+  }
+
+  /* Clear pin flags */
+  GPIO_PortClearInterruptFlags(GPIOC, pin_flags);
+
+  /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F
+     Store immediate overlapping exception return operation might vector to incorrect interrupt. */
+  #if defined __CORTEX_M && (__CORTEX_M == 4U)
+    __DSB();
+  #endif
+}
+
+
+/* SW3 Interr.: Se aumenta el valor de mu */
+void GPIOA_IRQHANDLER(void) {
+  /* Get pin flags */
+  uint32_t pin_flags = GPIO_PortGetInterruptFlags(GPIOA);
+
+  /* Place your interrupt code here */
+  restart = true;
+  if(mu >= 10000)
+  {
+	  mu = mu + 3000;	/* Para mu alto, se usa un incremento chico */
+  }
+  else
+  {
+	  mu = mu * 10;	/* Para mu bajo, se usa un incremento alto */
+  }
+
+  if(mu >= 28000)
+  {
+	  mu = 28000;	/* Se satura el mu a 28000 */
+  }
+
+  /* Clear pin flags */
+  GPIO_PortClearInterruptFlags(GPIOA, pin_flags);
+
+  /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F
+     Store immediate overlapping exception return operation might vector to incorrect interrupt. */
+  #if defined __CORTEX_M && (__CORTEX_M == 4U)
+    __DSB();
+  #endif
+}
+
+
 
 int main()
 {
@@ -52,10 +120,10 @@ int main()
 	BOARD_InitBootPins();
 	BOARD_InitDebugConsole();
 
-	/**************************************************************************
-	 * Se inicializan las instancias de cada filtro de acuerdo a la
+	/****************************************************************
+	 * Se crean las instancias de cada filtro de acuerdo a la
 	 * documentacion oficial CMSIS.
-	 **************************************************************************
+	 ****************************************************************
 	 */
 
 	/* Filtro FIR (planta) */
@@ -64,15 +132,12 @@ int main()
 									5280, 10560,	21120, 21120, 21120, 21120, 21120, 21120, 10560, 	5280,
 									2640, 	1320, 	640,	320, 	160, 	80, 	40, 	20, 	10, 	5};
 	q15_t fir_state[NUMTAPS + BLOCKSIZE - 1];
-
 	arm_fir_init_q15(&fir_struct, NUMTAPS, fir_coeficients, fir_state, BLOCKSIZE);
 
 	/* Filtro LMS */
 	arm_lms_instance_q15 lms_struct;
 	q15_t lms_coeficients[NUMTAPS] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	q15_t lms_state[NUMTAPS + BLOCKSIZE - 1];
-
-	arm_lms_init_q15(&lms_struct, NUMTAPS, lms_coeficients, lms_state, MU, BLOCKSIZE, POSTSHIFT);
 
 	/* Buffers auxiliares para computar algoritmo LMS */
 	q15_t src[BLOCKSIZE];
@@ -85,6 +150,16 @@ int main()
 
 	while(1)
 	{
+
+		restart = false;	/* Para que se ejecuta una vez la deteccion de planta*/
+
+		/* Se resetea el valor de los coficientes del filtro LMS*/
+		for(uint8_t i = 0; i < NUMTAPS; i++)
+			lms_coeficients[i] = 0;
+
+		/* Se inicializa el filtro LMS para una nueva deteccion de planta */
+		arm_lms_init_q15(&lms_struct, NUMTAPS, lms_coeficients, lms_state, mu, BLOCKSIZE, POSTSHIFT);
+
 		for(uint16_t i = 0; i < NUMFRAMES; i++)
 		{
 			/* Se construye la señal aleatoria. Se shiftea el valor devuelto
@@ -96,14 +171,14 @@ int main()
 			 */
 			for(uint16_t j = 0; j < BLOCKSIZE; j++)
 			{
-				src[j] = (q15_t)(rand()>>20);
+				src[j] = (q15_t)(rand()>>20) * signal_power;
 			}
 
 			arm_fir_q15(&fir_struct, src, ref, BLOCKSIZE);
 
 			arm_lms_q15(&lms_struct, src, ref, out, err, BLOCKSIZE);
 
-			/* Se computa el MSE para cada iteracion. NO FUNCIONA, DA SIEMPRE 0*/
+			/* Se computa el MSE para cada iteracion */
 	        for(uint16_t k = 0; k < BLOCKSIZE; k++)
 	        {
 	        	mse[i] += err[k] * err [k];
@@ -190,6 +265,7 @@ int main()
 
 		UART_WriteBlocking(UART0, err_tx_buffer, NUMFRAMES*2);
 
-		while(1){}
+		/* Se espera hasta que el usuario haga cambie el mu o la potencia de entrada */
+		while(!restart){}
 	}
 }

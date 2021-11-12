@@ -35,6 +35,14 @@ extern "C" {
 #define GPIOA_IRQN PORTA_IRQn
 /* GPIOA interrupt handler identifier. */
 #define GPIOA_IRQHANDLER PORTA_IRQHandler
+/* Alias for GPIOC peripheral */
+#define GPIOC_GPIO GPIOC
+/* Alias for PORTC */
+#define GPIOC_PORT PORTC
+/* GPIOC interrupt vector ID (number). */
+#define GPIOC_IRQN PORTC_IRQn
+/* GPIOC interrupt handler identifier. */
+#define GPIOC_IRQHANDLER PORTC_IRQHandler
 
 /***********************************************************************************************************************
  * Global variables
