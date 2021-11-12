@@ -202,16 +202,16 @@ int main()
 		 *
 		 * La trama es:
 		 * 	Byte N°     |       Data
-				0       |   lmsNormCoeff_q15[0] LowByte
-				1       |   lmsNormCoeff_q15[0] HighByte
+				0       |   lms_coeficients[0] LowByte
+				1       |   lms_coeficients[0] HighByte
 			   ...      |       "
-				60      |   lmsNormCoeff_q15[29] LowByte
-				61      |   lmsNormCoeff_q15[29] HighByte
-				62      |   FIRCoeff_q15[0] LowByte
-				63      |   FIRCoeff_q15 [0] HighByte
+				60      |   lms_coeficients[29] LowByte
+				61      |   lms_coeficients[29] HighByte
+				62      |   fir_coeficients[0] LowByte
+				63      |   fir_coeficients [0] HighByte
 			   ...      |       "
-			   118      |   FIRCoeff_q15[29] LowByte
-			   119      |   FIRCoeff_q15[29] HighByte
+			   118      |   fir_coeficients[29] LowByte
+			   119      |   fir_coeficients[29] HighByte
 		 */
 		uint8_t tx_buffer[NUMTAPS*4];
 		uint8_t* tx_buffer_ptr = tx_buffer;
